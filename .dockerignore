@@ -1,0 +1,11 @@
+.dart_tool/
+.packages
+build/
+*.db
+*.db-wal
+*.db-shm
+.git/
+.gitignore
+test/
+run.sh
+analysis_options.yaml
