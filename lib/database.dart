@@ -35,23 +35,47 @@ class AppDatabase {
 
   Database get db => _db;
 
-  /// On Windows, look for sqlite3.dll next to the backend project so the
-  /// server runs without requiring the DLL on the global PATH.
+  /// Resolve the native SQLite library per platform. Windows looks for a bundled
+  /// sqlite3.dll; Linux tries versioned Debian paths because libsqlite3-0 only
+  /// ships libsqlite3.so.0 while package:sqlite3 opens libsqlite3.so.
   static void _setupNativeLibrary() {
-    if (!Platform.isWindows) return;
-    open.overrideFor(OperatingSystem.windows, () {
-      final candidates = [
-        'sqlite3.dll',
-        '${Directory.current.path}${Platform.pathSeparator}sqlite3.dll',
-      ];
-      for (final candidate in candidates) {
+    if (Platform.isWindows) {
+      open.overrideFor(OperatingSystem.windows, _openSqliteOnWindows);
+    } else if (Platform.isLinux) {
+      open.overrideFor(OperatingSystem.linux, _openSqliteOnLinux);
+    }
+  }
+
+  static DynamicLibrary _openSqliteOnWindows() {
+    final candidates = [
+      'sqlite3.dll',
+      '${Directory.current.path}${Platform.pathSeparator}sqlite3.dll',
+    ];
+    for (final candidate in candidates) {
+      try {
+        return DynamicLibrary.open(candidate);
+      } catch (_) {}
+    }
+    return DynamicLibrary.open('sqlite3.dll');
+  }
+
+  static DynamicLibrary _openSqliteOnLinux() {
+    final dirs = <String>{'/usr/lib', '/lib'};
+    for (final arch in ['x86_64', 'aarch64', 'arm64']) {
+      dirs.add('/usr/lib/$arch-linux-gnu');
+      dirs.add('/lib/$arch-linux-gnu');
+    }
+
+    for (final dir in dirs) {
+      for (final name in ['libsqlite3.so', 'libsqlite3.so.0']) {
+        final path = '$dir${Platform.pathSeparator}$name';
         try {
-          return DynamicLibrary.open(candidate);
+          return DynamicLibrary.open(path);
         } catch (_) {}
       }
-      // Fall back to default lookup (PATH / system32).
-      return DynamicLibrary.open('sqlite3.dll');
-    });
+    }
+
+    return DynamicLibrary.open('libsqlite3.so');
   }
 
   static String _defaultPath() {
